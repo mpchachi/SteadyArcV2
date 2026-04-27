@@ -1,0 +1,25 @@
+# Dependencies
+node_modules/
+fisherGame/node_modules/
+eyetracker/node_modules/
+
+# Next.js build output
+fisherGame/.next/
+fisherGame/out/
+fisherGame/build/
+
+# TypeScript cache
+fisherGame/tsconfig.tsbuildinfo
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/

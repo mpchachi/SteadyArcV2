@@ -1,0 +1,6 @@
+node_modules/
+dist/
+.cache/
+.claude/
+server.log
+txt.txt

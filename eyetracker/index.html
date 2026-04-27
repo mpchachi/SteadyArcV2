@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Eye Tracker</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      background: #000;
+      width: 100vw;
+      height: 100vh;
+      overflow: hidden;
+      font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+    }
+
+    /* camera preview — SDK lo controla */
+    canvas#preview {
+      position: fixed;
+      top: 1rem;
+      right: 1rem;
+      z-index: 10;
+      border-radius: 6px;
+      opacity: 0.7;
+    }
+
+    /* canvas para los puntos de calibración */
+    canvas#output {
+      position: fixed;
+      top: 0; left: 0;
+      width: 100vw;
+      height: 100vh;
+      z-index: 5;
+      pointer-events: none;
+    }
+
+    /* punto de mirada */
+    #gaze-dot {
+      position: fixed;
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      background: radial-gradient(circle, #fff 0%, rgba(255,255,255,0.5) 50%, transparent 100%);
+      box-shadow: 0 0 14px 5px rgba(255,255,255,0.2);
+      pointer-events: none;
+      display: none;
+      transform: translate(-50%, -50%);
+      z-index: 20;
+    }
+
+    /* pantalla inicial */
+    #ui {
+      position: fixed;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 1rem;
+      z-index: 30;
+    }
+
+    #ui h1 {
+      color: #eee;
+      font-size: 1.8rem;
+      font-weight: 300;
+      letter-spacing: 0.1em;
+    }
+
+    #ui p {
+      color: #555;
+      font-size: 0.85rem;
+    }
+
+    #calibrate-btn {
+      margin-top: 1rem;
+      background: transparent;
+      border: 1px solid #444;
+      color: #bbb;
+      padding: 0.7rem 2.2rem;
+      font-size: 0.9rem;
+      letter-spacing: 0.07em;
+      cursor: pointer;
+      border-radius: 4px;
+      transition: border-color 0.2s, color 0.2s;
+    }
+
+    #calibrate-btn:hover:not(:disabled) {
+      border-color: #888;
+      color: #fff;
+    }
+
+    #calibrate-btn:disabled {
+      opacity: 0.35;
+      cursor: not-allowed;
+    }
+
+    /* mensaje "mira el punto" */
+    #focus-msg {
+      position: fixed;
+      inset: 0;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      color: #888;
+      font-size: 1rem;
+      letter-spacing: 0.12em;
+      z-index: 40;
+    }
+
+    /* botón recalibrar (esquina) */
+    #recalibrate-btn {
+      position: fixed;
+      bottom: 1.5rem;
+      right: 1.5rem;
+      background: transparent;
+      border: 1px solid #333;
+      color: #555;
+      padding: 0.45rem 1.1rem;
+      font-size: 0.75rem;
+      letter-spacing: 0.06em;
+      cursor: pointer;
+      border-radius: 4px;
+      display: none;
+      z-index: 30;
+      transition: border-color 0.2s, color 0.2s;
+    }
+
+    #recalibrate-btn:hover {
+      border-color: #666;
+      color: #aaa;
+    }
+
+    #status {
+      position: fixed;
+      bottom: 1.5rem;
+      left: 50%;
+      transform: translateX(-50%);
+      color: #333;
+      font-size: 0.7rem;
+      letter-spacing: 0.05em;
+      z-index: 30;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="preview"></canvas>
+  <canvas id="output"></canvas>
+  <div id="gaze-dot"></div>
+
+  <div id="ui">
+    <h1>Eye Tracker</h1>
+    <p id="ui-sub">Iniciando cámara…</p>
+    <button id="calibrate-btn" disabled>Calibrar</button>
+  </div>
+
+  <div id="focus-msg">mira el punto</div>
+
+  <button id="recalibrate-btn">Recalibrar</button>
+  <div id="status"></div>
+
+  <script src="index.js"></script>
+</body>
+</html>
