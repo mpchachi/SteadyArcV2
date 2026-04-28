@@ -50,6 +50,7 @@ export function useGestureRecognition({ videoElement, canvasEl, onResultsCallbac
     if (!faceResults?.multiFaceLandmarks?.length) return;
     const lm = faceResults.multiFaceLandmarks[0];
 
+    // EAR / blink / closure — matemática pura, no depende del espejo
     const earL = (dist(lm[159], lm[145]) + dist(lm[158], lm[153])) / (2 * dist(lm[133], lm[33]));
     const earR = (dist(lm[386], lm[374]) + dist(lm[385], lm[380])) / (2 * dist(lm[362], lm[263]));
     const now  = Date.now();
@@ -62,7 +63,7 @@ export function useGestureRecognition({ videoElement, canvasEl, onResultsCallbac
         if (state.framesBelow > 6 && !state.isInClosure) state.isInClosure = true;
       } else {
         if (state.framesBelow >= 2 && state.framesBelow <= 6) state.blinkCount++;
-        else if (state.framesBelow > 6)                       { state.closureCount++; state.isInClosure = false; }
+        else if (state.framesBelow > 6) { state.closureCount++; state.isInClosure = false; }
         state.framesBelow = 0;
       }
       if (now - state.sessionStart > 60000) { state.blinkCount = 0; state.closureCount = 0; state.sessionStart = now; }
@@ -70,9 +71,9 @@ export function useGestureRecognition({ videoElement, canvasEl, onResultsCallbac
     processEye(earL, "left");
     processEye(earR, "right");
 
-    const elapsedMin  = (now - eyeState.current.left.sessionStart) / 60000;
-    const blinkRateL  = elapsedMin > 0.1 ? Math.round(eyeState.current.left.blinkCount  / elapsedMin) : 0;
-    const blinkRateR  = elapsedMin > 0.1 ? Math.round(eyeState.current.right.blinkCount / elapsedMin) : 0;
+    const elapsedMin = (now - eyeState.current.left.sessionStart) / 60000;
+    const blinkRateL = elapsedMin > 0.1 ? Math.round(eyeState.current.left.blinkCount  / elapsedMin) : 0;
+    const blinkRateR = elapsedMin > 0.1 ? Math.round(eyeState.current.right.blinkCount / elapsedMin) : 0;
 
     const noseTip   = lm[4];
     const leftDist  = dist(lm[61],  noseTip);
@@ -81,33 +82,11 @@ export function useGestureRecognition({ videoElement, canvasEl, onResultsCallbac
     const leftLift  = noseTip.y - lm[61].y;
     const rightLift = noseTip.y - lm[291].y;
     const smileSym  = Math.min(100, (Math.min(leftLift, rightLift) / (Math.max(leftLift, rightLift) + 0.001)) * 100).toFixed(1);
-    const dxT       = lm[263].x - lm[33].x;
-    const dyT       = lm[263].y - lm[33].y;
-    const tilt      = Math.atan2(dyT, dxT) * 180 / Math.PI;
+    const dxT = lm[263].x - lm[33].x;
+    const dyT = lm[263].y - lm[33].y;
+    const tilt = Math.atan2(dyT, dxT) * 180 / Math.PI;
 
-    // HUD box
-    const x = 20, yStart = maxVideoHeight - 160;
-    ctx.fillStyle = "rgba(0,0,0,0.6)";
-    ctx.fillRect(x - 5, yStart - 20, 260, 155);
-    ctx.font = "14px monospace";
-    const lh = 18;
-    const drawLine = (label: string, value: string, color: string, row: number) => {
-      ctx.fillStyle = "#AAAAAA"; ctx.fillText(label, x, yStart + row * lh);
-      ctx.fillStyle = color;     ctx.fillText(value, x + 105, yStart + row * lh);
-    };
-    const rateColor = Math.abs(blinkRateL - blinkRateR) > 4 ? "#FF4444" : "#00FF88";
-    drawLine("SYMMETRY:", `${symPct}%`,                          parseFloat(symPct)  > 85 ? "#00FF88" : "#FF4444", 0);
-    drawLine("BLINK:",    `L:${blinkRateL}/m R:${blinkRateR}/m`, rateColor,                                         1);
-    const lStatus = eyeState.current.left.framesBelow  > 0 ? "CLOSED" : "OPEN";
-    const rStatus = eyeState.current.right.framesBelow > 0 ? "CLOSED" : "OPEN";
-    drawLine("EYE L:", lStatus, lStatus === "CLOSED" ? "#FF4444" : "#00FF88", 2);
-    drawLine("EYE R:", rStatus, rStatus === "CLOSED" ? "#FF4444" : "#00FF88", 3);
-    const closureAsym = Math.abs(eyeState.current.left.closureCount - eyeState.current.right.closureCount);
-    drawLine("VOL.CLOSURE:", `L:${eyeState.current.left.closureCount} R:${eyeState.current.right.closureCount}`, closureAsym > 2 ? "#FF4444" : "#00FF88", 4);
-    drawLine("SMILE SYM:",   `${smileSym}%`, parseFloat(smileSym) > 80 ? "#00FF88" : "#FF4444", 5);
-    drawLine("HEAD TILT:",   `${tilt.toFixed(1)}°`, Math.abs(tilt) < 5 ? "#00FF88" : "#FF4444", 6);
-
-    // Face mesh lines
+    // ── Overlays de malla facial — coordenadas raw, el CSS scaleX(-1) ya las espeja ──
     const drawLineP = (pts: number[], color: string, width: number) => {
       ctx.beginPath(); ctx.strokeStyle = color; ctx.lineWidth = width;
       pts.forEach((idx, i) => {
@@ -133,7 +112,7 @@ export function useGestureRecognition({ videoElement, canvasEl, onResultsCallbac
     drawClosedEye(EYE_LEFT,  "#FF4444");
     drawClosedEye(EYE_RIGHT, "#22C55E");
 
-    // EAR bars
+    // EAR bars sobre los ojos
     const getBarColor = (fb: number) => fb === 0 ? "#00FF88" : fb <= 6 ? "#FFA500" : "#FF4444";
     const barMax = 40;
     ctx.fillStyle = getBarColor(eyeState.current.left.framesBelow);
@@ -141,7 +120,7 @@ export function useGestureRecognition({ videoElement, canvasEl, onResultsCallbac
     ctx.fillStyle = getBarColor(eyeState.current.right.framesBelow);
     ctx.fillRect(lm[362].x * maxVideoWidth, lm[386].y * maxVideoHeight - 8, barMax * Math.min(1, earR / 0.35), 3);
 
-    // Iris dots + mouth
+    // Iris dots
     ctx.fillStyle = "#FFFFFF";
     [[33,133],[362,263]].forEach(([l,r]) => {
       const p = { x: (lm[l].x + lm[r].x) / 2, y: (lm[l].y + lm[r].y) / 2 };
@@ -161,9 +140,34 @@ export function useGestureRecognition({ videoElement, canvasEl, onResultsCallbac
     ctx.moveTo(lm[10].x * maxVideoWidth, lm[10].y * maxVideoHeight);
     ctx.lineTo(lm[152].x * maxVideoWidth, lm[152].y * maxVideoHeight);
     ctx.stroke(); ctx.restore();
+
+    // ── HUD text — renderizado como HTML para evitar el espejo del canvas ──
+    const hudEl = document.getElementById("face-hud-overlay");
+    if (hudEl) {
+      const lStatus = eyeState.current.left.framesBelow  > 0 ? "CLOSED" : "OPEN";
+      const rStatus = eyeState.current.right.framesBelow > 0 ? "CLOSED" : "OPEN";
+      const closureAsym = Math.abs(eyeState.current.left.closureCount - eyeState.current.right.closureCount);
+      const rc = Math.abs(blinkRateL - blinkRateR) > 4 ? "#FF4444" : "#00FF88";
+      const line = (l: string, v: string, c: string) =>
+        `<span style="color:#AAAAAA">${l}</span> <span style="color:${c}">${v}</span>`;
+      hudEl.innerHTML = [
+        line("SYMMETRY:", `${symPct}%`, parseFloat(symPct) > 85 ? "#00FF88" : "#FF4444"),
+        line("BLINK:", `L:${blinkRateL}/m R:${blinkRateR}/m`, rc),
+        line("EYE L:", lStatus, lStatus === "CLOSED" ? "#FF4444" : "#00FF88"),
+        line("EYE R:", rStatus, rStatus === "CLOSED" ? "#FF4444" : "#00FF88"),
+        line("VOL.CLOSURE:", `L:${eyeState.current.left.closureCount} R:${eyeState.current.right.closureCount}`, closureAsym > 2 ? "#FF4444" : "#00FF88"),
+        line("SMILE SYM:", `${smileSym}%`, parseFloat(smileSym) > 80 ? "#00FF88" : "#FF4444"),
+        line("HEAD TILT:", `${tilt.toFixed(1)}°`, Math.abs(tilt) < 5 ? "#00FF88" : "#FF4444"),
+      ].join("<br>");
+    }
   };
 
   // ── Render loop ───────────────────────────────────────────────────────
+  // NOTA: el elemento <canvas> tiene CSS transform: scaleX(-1) aplicado desde
+  // ClinicalView, que espeja visualmente todo el contenido del canvas. Por tanto:
+  //  - Vídeo y overlays de cuerpo se dibujan con coordenadas raw de MediaPipe.
+  //  - El CSS scaleX(-1) se encarga de mostrarlos espejados (efecto selfie).
+  //  - Solo el HUD de texto usa un ctx.scale(-1,1) interno para cancelar el espejo.
   const render = () => {
     const canvas = canvasEl.current;
     const video  = videoElement.current;
@@ -178,7 +182,10 @@ export function useGestureRecognition({ videoElement, canvasEl, onResultsCallbac
       // Heatmap
       heatmapBuffer.current.forEach((point, i) => {
         const alpha = (i / heatmapBuffer.current.length) * 0.3;
-        const grad = ctx.createRadialGradient(point.x * maxVideoWidth, point.y * maxVideoHeight, 0, point.x * maxVideoWidth, point.y * maxVideoHeight, 30);
+        const grad = ctx.createRadialGradient(
+          point.x * maxVideoWidth, point.y * maxVideoHeight, 0,
+          point.x * maxVideoWidth, point.y * maxVideoHeight, 30,
+        );
         grad.addColorStop(0, `rgba(255,255,255,${alpha})`);
         grad.addColorStop(0.5, `rgba(0,212,255,${alpha * 0.5})`);
         grad.addColorStop(1, "rgba(0,20,100,0)");
