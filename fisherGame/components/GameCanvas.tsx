@@ -5,6 +5,8 @@ import { KeyboardMouseInput } from "@/lib/input/KeyboardMouseInput";
 import { FishManager, type Fish } from "@/lib/game/FishManager";
 import { useHandTracking } from "@/lib/input/useHandTracking";
 import WoodenSign, { GestureIcon } from "./WoodenSign";
+import VocalChallengeCard from "./VocalChallengeCard";
+import { VocalMetrics } from "@/lib/vocalAnalysis";
 
 // h/w ratios for each source PNG
 const MUC_HW = 376 / 856;
@@ -53,7 +55,7 @@ interface Cast {
   hookedFishId?: number;
 }
 
-type ChallengeType = "SMILE_CHALLENGE" | "HOLD_HAND_OPEN" | "REPEATED_PINCH";
+type ChallengeType = "SMILE_CHALLENGE" | "HOLD_HAND_OPEN" | "REPEATED_PINCH" | "VOCAL";
 interface ReelingState {
   active: boolean;
   fishId: number;
@@ -70,7 +72,7 @@ interface ReelingState {
 interface FloatingText { text: string; x: number; y: number; startTime: number; }
 
 
-const CHALLENGE_TYPES: ChallengeType[] = ["SMILE_CHALLENGE", "HOLD_HAND_OPEN", "REPEATED_PINCH"];
+const CHALLENGE_TYPES: ChallengeType[] = ["SMILE_CHALLENGE", "HOLD_HAND_OPEN", "REPEATED_PINCH", "VOCAL"];
 
 
 function quadBez(t: number, P0: Pt, P1: Pt, P2: Pt): Pt {
@@ -132,6 +134,18 @@ export default function GameCanvas({ onOpenClinical }: GameCanvasProps) {
     progress: 0,
     count: 0
   });
+
+  // State for Vocal Challenge
+  const [showVocalChallenge, setShowVocalChallenge] = useState(false);
+  const [vocalChallengeKey, setVocalChallengeKey] = useState(0);
+  const vocalMetricsRef = useRef<VocalMetrics | null>(null);
+
+  const handleVocalComplete = (metrics: VocalMetrics) => {
+    setShowVocalChallenge(false);
+    vocalMetricsRef.current = metrics;
+    // Las métricas se guardarán cuando finalicemos el reto
+    // La lógica de avance del pez se manejará en tickReeling
+  };
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -495,7 +509,7 @@ export default function GameCanvas({ onOpenClinical }: GameCanvasProps) {
 
     // ── Reeling ───────────────────────────────────────────────────────────
     function pickChallenge(): ChallengeType {
-      return CHALLENGE_TYPES[Math.floor(Math.random() * 3)];
+      return CHALLENGE_TYPES[Math.floor(Math.random() * CHALLENGE_TYPES.length)];
     }
 
     function startChallenge(r: ReelingState, now: number): void {
@@ -503,6 +517,15 @@ export default function GameCanvas({ onOpenClinical }: GameCanvasProps) {
       r.challengeStart   = now;
       r.holdAccum        = 0;
       r.mashCount        = 0;
+
+      // Si es VOCAL, activar el componente VocalChallengeCard y desactivar retos clínicos
+      if (r.currentChallenge === "VOCAL") {
+        setVocalChallengeKey(prev => prev + 1); // Incrementar key para forzar remount
+        setShowVocalChallenge(true);
+      } else {
+        // Para retos no vocales, asegurarse de que vocal está oculto
+        setShowVocalChallenge(false);
+      }
     }
 
     function startReeling(fish: Fish, now: number): void {
@@ -522,12 +545,17 @@ export default function GameCanvas({ onOpenClinical }: GameCanvasProps) {
 
     function updateChallengeUIState() {
       const r = reelingRef.current;
-      
+
       let nextActive = r.active;
-      let nextType = r.currentChallenge;
+      const nextType = r.currentChallenge;
       let nextInstruction = "";
       let nextProgress = 0;
-      let nextCount = r.mashCount;
+      const nextCount = r.mashCount;
+
+      // Si es VOCAL, ocultamos el WoodenSign porque VocalChallengeCard se muestra por separado
+      if (nextType === "VOCAL") {
+        nextActive = false;
+      }
 
       if (!nextActive) {
         if (prevChallengeUI.current.active) {
@@ -603,7 +631,15 @@ export default function GameCanvas({ onOpenClinical }: GameCanvasProps) {
 
       // Challenge input
       let done = false;
-      if (r.currentChallenge === "SMILE_CHALLENGE") {
+      if (r.currentChallenge === "VOCAL") {
+        // Para VOCAL, esperamos a que el usuario complete el reto mediante el callback
+        // El componente VocalChallengeCard llamará a handleVocalComplete cuando termine
+        // No hacemos nada aquí, simplemente esperamos
+        if (vocalMetricsRef.current !== null) {
+          done = true;
+          vocalMetricsRef.current = null; // Reset para el próximo reto
+        }
+      } else if (r.currentChallenge === "SMILE_CHALLENGE") {
         if (isSmilingRef.current) {
           r.holdAccum += dt;
           if (r.holdAccum >= 0.5) done = true;
@@ -651,74 +687,7 @@ export default function GameCanvas({ onOpenClinical }: GameCanvasProps) {
       startChallenge(r, now);
     }
 
-    function drawChallengeUI(now: number): void {
-      const r = reelingRef.current;
-      if (!r.active) return;
-
-      const timeLeft = Math.max(0, 6 - (now - r.challengeStart) / 1000);
-
-      // Timeout bar
-      ctx.fillStyle = "#1a1a1a";
-      ctx.fillRect(0, 0, W, 6);
-      ctx.fillStyle = "#e63946";
-      ctx.fillRect(0, 0, Math.round(W * (timeLeft / 6)), 6);
-
-      // Instruction text
-      let line = "";
-      if      (r.currentChallenge === "SMILE_CHALLENGE") line = "¡SONRIE!";
-      else if (r.currentChallenge === "HOLD_HAND_OPEN")  line = "¡MANTÉN LA MANO ABIERTA!";
-      else                                               line = "¡PELLIZCA x4!";
-
-      ctx.font = '20px "Press Start 2P", monospace';
-      ctx.textAlign = "center";
-      ctx.fillStyle = "#000000";
-      ctx.fillText(line, W / 2 + 2, 62);
-      ctx.fillStyle = "#ffffff";
-      ctx.fillText(line, W / 2, 60);
-
-      // Sub-UI
-      if (r.currentChallenge === "SMILE_CHALLENGE") {
-        const bw = 220, bh = 12, bx = Math.round(W / 2 - 110), by = 70;
-        ctx.fillStyle = "#333333";
-        ctx.fillRect(bx, by, bw, bh);
-        ctx.fillStyle = isSmilingRef.current ? "#ffeb3b" : "#555555";
-        ctx.fillRect(bx, by, Math.round(bw * Math.min(1, r.holdAccum / 0.5)), bh);
-        ctx.strokeStyle = "#aaaaaa"; ctx.lineWidth = 1;
-        ctx.strokeRect(bx, by, bw, bh);
-      } else if (r.currentChallenge === "HOLD_HAND_OPEN") {
-        const bw = 320, bh = 14, bx = Math.round(W / 2 - 160), by = 70;
-        ctx.fillStyle = "#333333";
-        ctx.fillRect(bx, by, bw, bh);
-        const fill = Math.min(1, r.holdAccum / 2);
-        ctx.fillStyle = fill > 0.75 ? "#4caf50" : fill > 0.40 ? "#ffeb3b" : "#ff9800";
-        ctx.fillRect(bx, by, Math.round(bw * fill), bh);
-        ctx.strokeStyle = "#aaaaaa"; ctx.lineWidth = 1;
-        ctx.strokeRect(bx, by, bw, bh);
-      } else if (r.currentChallenge === "REPEATED_PINCH") {
-        // Pip row: 8 small squares, filled as each pinch is counted
-        const pipSize = 12, pipGap = 6;
-        const totalW  = 4 * pipSize + 3 * pipGap;
-        const pipX0   = Math.round(W / 2 - totalW / 2);
-        const pipY    = 74;
-        for (let i = 0; i < 4; i++) {
-          ctx.fillStyle = i < r.mashCount ? "#ffeb3b" : "#444444";
-          ctx.fillRect(pipX0 + i * (pipSize + pipGap), pipY, pipSize, pipSize);
-        }
-        ctx.font = '11px "Press Start 2P", monospace';
-        ctx.fillStyle = "#aaaaaa";
-        ctx.textAlign = "center";
-        ctx.fillText(`${r.mashCount} / 4`, W / 2, 102);
-      }
-
-      // Progress pips
-      ctx.font = '12px "Press Start 2P", monospace';
-      for (let i = 0; i < 3; i++) {
-        ctx.fillStyle = i < r.challengeDone ? "#4caf50" : "#555555";
-        ctx.fillText("■", W / 2 + (i - 1) * 20 - 5, 108);
-      }
-
-      ctx.textAlign = "left";
-    }
+    // drawChallengeUI removed - replaced by WoodenSign and VocalChallengeCard components
 
     function drawScore(): void {
       ctx.font = '14px "Press Start 2P", monospace';
@@ -878,7 +847,7 @@ export default function GameCanvas({ onOpenClinical }: GameCanvasProps) {
         style={{ display: "block", width: "100vw", height: "100vh", cursor: "crosshair" }}
       />
 
-      {challengeUI.active && (
+      {challengeUI.active && !showVocalChallenge && (
         <div style={{
           position: 'fixed',
           top: '16px',
@@ -891,7 +860,7 @@ export default function GameCanvas({ onOpenClinical }: GameCanvasProps) {
             title={challengeUI.instruction}
             progress={challengeUI.progress / 100}
             progressLabel={
-              challengeUI.type === 'REPEATED_PINCH' 
+              challengeUI.type === 'REPEATED_PINCH'
                 ? `${challengeUI.count} / 4`
                 : undefined
             }
@@ -903,6 +872,14 @@ export default function GameCanvas({ onOpenClinical }: GameCanvasProps) {
             }
           />
         </div>
+      )}
+
+      {showVocalChallenge && (
+        <VocalChallengeCard
+          key={`vocal-${vocalChallengeKey}`}
+          onComplete={handleVocalComplete}
+          visible={showVocalChallenge}
+        />
       )}
 
       <button
