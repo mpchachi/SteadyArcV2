@@ -1,14 +1,35 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { KeyboardMouseInput } from "@/lib/input/KeyboardMouseInput";
 import { FishManager, type Fish } from "@/lib/game/FishManager";
 import { useHandTracking } from "@/lib/input/useHandTracking";
+import WoodenSign, { GestureIcon } from "./WoodenSign";
 
 // h/w ratios for each source PNG
 const MUC_HW = 376 / 856;
 const IZQ_WH = 802 / 1696;
 const DER_WH = 642 / 1696;
+
+const getDescription = (type: string): string => {
+  switch(type) {
+    case 'REPEATED_PINCH': return 'Junta el pulgar y el índice 4 veces, marinero.';
+    case 'HOLD_HAND_OPEN': return 'Abre bien la mano y mantén 2 segundos.';
+    case 'SMILE_CHALLENGE': return '¡Sonríe al mar! El pez responde a la alegría.';
+    case 'PINCH_TARGET': return 'Haz la pinza con pulgar e índice.';
+    case 'OPEN_HAND': return 'Extiende todos los dedos hacia el cielo.';
+    case 'FIST_HOLD': return 'Cierra el puño con fuerza durante 2 segundos.';
+    case 'FINGER_MATH': return 'Resuelve la operación y muestra el resultado con los dedos.';
+    case 'SHOW_FINGERS': return 'Extiende exactamente los dedos que se piden.';
+    default: return 'Completa el reto para atrapar al pez.';
+  }
+};
+
+const getGestureIcon = (type: string): GestureIcon => {
+  if (type === 'PINCH_TARGET' || type === 'REPEATED_PINCH') return 'pinch';
+  if (type === 'SMILE_CHALLENGE' || type === 'SMILE') return 'smile';
+  return 'openHand';
+};
 
 // pez.png sprite dimensions
 const PEZ_HW    = 469 / 642; // height/width of the sprite
@@ -62,7 +83,11 @@ function arcMid(o: Pt, t: Pt): Pt {
   return { x: (o.x + t.x) / 2, y: (o.y + t.y) / 2 - d * 0.30 };
 }
 
-export default function GameCanvas() {
+interface GameCanvasProps {
+  onOpenClinical: () => void;
+}
+
+export default function GameCanvas({ onOpenClinical }: GameCanvasProps) {
   const canvasRef    = useRef<HTMLCanvasElement>(null);
   const videoRef     = useRef<HTMLVideoElement>(null);
   const { handOpennessRef, consumePinchCount, isSmilingRef } = useHandTracking(videoRef);
@@ -91,6 +116,22 @@ export default function GameCanvas() {
   });
   const scoreRef         = useRef<number>(0);
   const floatingTextsRef = useRef<FloatingText[]>([]);
+
+  // State for Challenge UI (to trigger re-renders of ChallengeCard)
+  const [challengeUI, setChallengeUI] = useState({
+    active: false,
+    type: "SMILE_CHALLENGE" as ChallengeType,
+    instruction: "",
+    progress: 0,
+    count: 0
+  });
+  const prevChallengeUI = useRef({
+    active: false,
+    type: "SMILE_CHALLENGE" as ChallengeType,
+    instruction: "",
+    progress: 0,
+    count: 0
+  });
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -479,6 +520,55 @@ export default function GameCanvas() {
       startChallenge(r, now);
     }
 
+    function updateChallengeUIState() {
+      const r = reelingRef.current;
+      
+      let nextActive = r.active;
+      let nextType = r.currentChallenge;
+      let nextInstruction = "";
+      let nextProgress = 0;
+      let nextCount = r.mashCount;
+
+      if (!nextActive) {
+        if (prevChallengeUI.current.active) {
+          const newState = { ...prevChallengeUI.current, active: false };
+          setChallengeUI(newState);
+          prevChallengeUI.current = newState;
+        }
+        return;
+      }
+
+      if (nextType === "SMILE_CHALLENGE") {
+        nextInstruction = "¡SONRÍE!";
+        nextProgress = Math.min(100, (r.holdAccum / 0.5) * 100);
+      } else if (nextType === "HOLD_HAND_OPEN") {
+        nextInstruction = "¡MANTÉN LA MANO ABIERTA!";
+        nextProgress = Math.min(100, (r.holdAccum / 2) * 100);
+      } else if (nextType === "REPEATED_PINCH") {
+        nextInstruction = "¡PELLIZCA x4!";
+        nextProgress = 0;
+      }
+
+      // Only update if something meaningful changed
+      if (
+        prevChallengeUI.current.active !== nextActive ||
+        prevChallengeUI.current.type !== nextType ||
+        prevChallengeUI.current.instruction !== nextInstruction ||
+        Math.abs(prevChallengeUI.current.progress - nextProgress) > 1 || // threshold to avoid jitter
+        prevChallengeUI.current.count !== nextCount
+      ) {
+        const newState = {
+          active: nextActive,
+          type: nextType,
+          instruction: nextInstruction,
+          progress: nextProgress,
+          count: nextCount
+        };
+        setChallengeUI(newState);
+        prevChallengeUI.current = newState;
+      }
+    }
+
     function tickReeling(now: number, dt: number): void {
       const r = reelingRef.current;
       if (!r.active) return;
@@ -759,7 +849,9 @@ export default function GameCanvas() {
       drawMuchacho(bob);
       drawFloatingTexts(now);
       drawScore();
-      drawChallengeUI(now);
+      // drawChallengeUI(now); // Removed: replaced by ChallengeCard component
+
+      updateChallengeUIState();
 
       rafRef.current = requestAnimationFrame(frame);
     }
@@ -785,6 +877,58 @@ export default function GameCanvas() {
         ref={canvasRef}
         style={{ display: "block", width: "100vw", height: "100vh", cursor: "crosshair" }}
       />
+
+      {challengeUI.active && (
+        <div style={{
+          position: 'fixed',
+          top: '16px',
+          left: '50%',
+          transform: 'translateX(-50%)',
+          zIndex: 9999,
+        }}>
+          <WoodenSign
+            icon={getGestureIcon(challengeUI.type)}
+            title={challengeUI.instruction}
+            progress={challengeUI.progress / 100}
+            progressLabel={
+              challengeUI.type === 'REPEATED_PINCH' 
+                ? `${challengeUI.count} / 4`
+                : undefined
+            }
+            description={getDescription(challengeUI.type)}
+            accent={
+              challengeUI.type?.includes('SMILE') ? '#facc15' :
+              challengeUI.type?.includes('PINCH') ? '#fb923c' :
+              '#4ade80'
+            }
+          />
+        </div>
+      )}
+
+      <button
+        onClick={onOpenClinical}
+        style={{
+          position: 'fixed',
+          bottom: '20px',
+          right: '20px',
+          background: 'rgba(10, 20, 40, 0.92)',
+          border: '2px solid #00ff88',
+          color: '#00ff88',
+          padding: '8px 18px',
+          borderRadius: '6px',
+          fontSize: '0.6rem',
+          cursor: 'pointer',
+          zIndex: 9999,
+          fontFamily: '"Press Start 2P", monospace',
+          letterSpacing: '0.05em',
+          boxShadow: '0 0 12px rgba(0,255,136,0.2)',
+          transition: 'background 0.2s'
+        }}
+        onMouseEnter={e => e.currentTarget.style.background = 'rgba(0,255,136,0.15)'}
+        onMouseLeave={e => e.currentTarget.style.background = 'rgba(10,20,40,0.92)'}
+      >
+        ⊞ CLINICAL VIEW
+      </button>
     </>
   );
 }

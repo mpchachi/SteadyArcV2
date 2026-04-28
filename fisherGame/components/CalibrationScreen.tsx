@@ -58,6 +58,7 @@ export default function CalibrationScreen({ onGaze, onCalibrated }: Props) {
           },
           () => {
             if (!isMounted) return;
+            clearTimeout(fallbackTimer);
             coin?.hide();
             sea?.hide();
             // Keep eyeTracker running — onGaze keeps firing for the game dot
@@ -66,6 +67,11 @@ export default function CalibrationScreen({ onGaze, onCalibrated }: Props) {
         );
       }, 2000);
     }
+
+    // Safety net: if the tracker or calibration hangs, unblock after 20 s
+    const fallbackTimer = setTimeout(() => {
+      if (isMounted) cbRef.current.onCalibrated();
+    }, 20_000);
 
     async function init() {
       try {
@@ -92,10 +98,14 @@ export default function CalibrationScreen({ onGaze, onCalibrated }: Props) {
             // No llamamos showImage() — no queremos la preview de cámara en el juego
             startCalibration();
           },
-          () => { console.error("EasySeeSo: error de inicialización — revisa licencia o cámara"); }
+          () => {
+            console.error("EasySeeSo: error de inicialización — revisa licencia o cámara");
+            if (isMounted) cbRef.current.onCalibrated();
+          }
         );
       } catch (err) {
         console.error("CalibrationScreen init error:", err);
+        if (isMounted) { clearTimeout(fallbackTimer); cbRef.current.onCalibrated(); }
       }
     }
 
@@ -103,6 +113,7 @@ export default function CalibrationScreen({ onGaze, onCalibrated }: Props) {
 
     return () => {
       isMounted = false;
+      clearTimeout(fallbackTimer);
       try { eyeTracker?.stopTracking?.(); } catch (_) {}
       coin?.hide();  coin?.remove();
       sea?.hide();   sea?.remove();

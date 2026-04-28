@@ -9,4 +9,4 @@
 // ║  ⚠️  La clave actual es de desarrollo y puede expirar.          ║
 // ╚══════════════════════════════════════════════════════════════════╝
 
-export const EYEDID_LICENSE_KEY = "dev_tndb27gx8r2u0ymvur504a2qr4sfrziip91b97x3";
+export const EYEDID_LICENSE_KEY = "dev_xdclc1oyo8ndtyg3mth4izm7wh4fcu77p4z9hj7u";

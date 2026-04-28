@@ -3,8 +3,11 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import GameCanvas          from "@/components/GameCanvas";
 import CalibrationScreen   from "@/components/CalibrationScreen";
+import ClinicalView        from "@/components/ClinicalView";
+import { GameEngineProvider } from "@/context/GameEngineProvider";
+import type { GazeSample } from "@/lib/gazeMetrics";
 
-type Phase = "intro" | "calibrating" | "playing";
+type Phase = "intro" | "calibrating" | "playing" | "clinical";
 
 export default function Home() {
   const [phase,   setPhase]   = useState<Phase>("intro");
@@ -12,6 +15,7 @@ export default function Home() {
 
   const videoRef   = useRef<HTMLVideoElement>(null);
   const gazeDotRef = useRef<HTMLDivElement>(null);
+  const gazeSamplesRef = useRef<GazeSample[]>([]);
 
   // ── Intro → calibración ───────────────────────────────────────────
   const startCalibration = useCallback(() => {
@@ -35,20 +39,59 @@ export default function Home() {
       gazeDotRef.current.style.left = g.x + "px";
       gazeDotRef.current.style.top  = g.y + "px";
     }
+
+    // Añadir al buffer:
+    gazeSamplesRef.current.push({ x: g.x, y: g.y, timestamp: Date.now() });
+    // Mantener solo las últimas 300 muestras:
+    if (gazeSamplesRef.current.length > 300) {
+      gazeSamplesRef.current.shift();
+    }
   }, []);
 
   const handleCalibrated = useCallback(() => setPhase("playing"), []);
 
   // ─────────────────────────────────────────────────────────────────
   return (
-    <main className="relative w-screen h-screen bg-black overflow-hidden">
+    <GameEngineProvider gazeSamples={gazeSamplesRef}>
+      <main className="relative w-screen h-screen bg-black overflow-hidden">
 
       {/* Juego — se monta solo al terminar la calibración */}
-      {phase === "playing" && <GameCanvas />}
+      {phase === "playing" && <GameCanvas onOpenClinical={() => setPhase("clinical")} />}
 
-      {/* CalibrationScreen: se monta al salir del intro y se queda montado
-          durante "playing" para que el eyeTracker siga corriendo. */}
-      {phase !== "intro" && (
+      {/* Mensaje de carga mientras se inicializa el eye tracker */}
+      {phase === "calibrating" && (
+        <div className="fixed inset-0 flex flex-col items-center justify-center gap-6" style={{ zIndex: 1 }}>
+          <p className="font-pixel text-white opacity-40 animate-pulse text-sm" style={{ fontFamily: '"Press Start 2P", monospace' }}>
+            INICIALIZANDO EYE TRACKER...
+          </p>
+          <button
+            onClick={() => setPhase("playing")}
+            style={{
+              fontFamily: '"Press Start 2P", monospace',
+              fontSize: "0.6rem",
+              color: "rgba(255,255,255,0.4)",
+              background: "transparent",
+              border: "1px solid rgba(255,255,255,0.2)",
+              padding: "8px 16px",
+              borderRadius: "4px",
+              cursor: "pointer",
+            }}
+          >
+            SALTAR CALIBRACIÓN
+          </button>
+        </div>
+      )}
+
+      {/* Vista Clínica real — cámara + MediaPipe + métricas */}
+      {phase === "clinical" && (
+        <div className="fixed inset-0 z-[100]">
+          <ClinicalView onBack={() => setPhase("playing")} />
+        </div>
+      )}
+
+      {/* CalibrationScreen: solo durante calibración y juego.
+          Se detiene en modo clinical para no competir con la cámara de MediaPipe. */}
+      {(phase === "calibrating" || phase === "playing") && (
         <CalibrationScreen onGaze={handleGaze} onCalibrated={handleCalibrated} />
       )}
 
@@ -136,9 +179,9 @@ export default function Home() {
             </div>
           </div>
 
-          <style>{`@keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.25; } }`}</style>
         </div>
       )}
     </main>
+    </GameEngineProvider>
   );
 }
