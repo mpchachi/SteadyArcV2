@@ -16,6 +16,20 @@ export function computeVocalMetrics(
   expectedAnswer?: string,
   transcript?: string
 ): VocalMetrics {
+  // Si no hay muestras, devolver valores mínimos no cero:
+  if (!amplitudes || amplitudes.length === 0) {
+    return {
+      vocal_duration_ms: 0,
+      response_latency_ms: latencyMs,
+      mean_amplitude: 0.01,
+      amplitude_stability: 0.5,
+      pause_count: 0,
+      speech_ratio: 0,
+      correct_answer: false,
+      raw_amplitudes: []
+    }
+  }
+
   const VOICE_THRESHOLD = 0.05
   const SILENCE_THRESHOLD = 0.03
 

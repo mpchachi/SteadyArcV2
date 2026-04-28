@@ -19,5 +19,5 @@ export const DEFAULT_PATIENT: PatientProfile = {
 export const VOCAL_CHALLENGE = {
   question: "Di 'Aaaaa' durante 3 segundos",
   instruction: "Mantén el sonido de forma continua",
-  targetDuration: 3000  // 3 segundos
+  targetDuration: 3000  // texto en pantalla
 }

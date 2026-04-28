@@ -135,6 +135,9 @@ export default function GameCanvas({ onOpenClinical }: GameCanvasProps) {
     count: 0
   });
 
+  // Estado React espejo para mashCount — dispara re-renders del WoodenSign
+  const [mashCount, setMashCount] = useState(0);
+
   // State for Vocal Challenge
   const [showVocalChallenge, setShowVocalChallenge] = useState(false);
   const [vocalChallengeKey, setVocalChallengeKey] = useState(0);
@@ -517,6 +520,7 @@ export default function GameCanvas({ onOpenClinical }: GameCanvasProps) {
       r.challengeStart   = now;
       r.holdAccum        = 0;
       r.mashCount        = 0;
+      setMashCount(0);  // Reset del estado React espejo
 
       // Si es VOCAL, activar el componente VocalChallengeCard y desactivar retos clínicos
       if (r.currentChallenge === "VOCAL") {
@@ -622,6 +626,11 @@ export default function GameCanvas({ onOpenClinical }: GameCanvasProps) {
 
       // Timeout → fish escapes
       if ((now - r.challengeStart) / 1000 >= 6) {
+        // Si hay reto vocal activo, extender el timeout en vez de liberar el pez
+        if (showVocalChallenge) {
+          r.challengeStart = now;  // resetear el timer mientras el reto vocal está activo
+          return;
+        }
         fishMgrRef.current.catchFish(fish.id);
         r.active = false;
         castRef.current.phase      = "in";
@@ -659,7 +668,11 @@ export default function GameCanvas({ onOpenClinical }: GameCanvasProps) {
           r.holdAccum = Math.max(0, r.holdAccum - dt * 2);
         }
       } else {
-        r.mashCount += consumePinchCount();
+        const newPinches = consumePinchCount();
+        if (newPinches > 0) {
+          r.mashCount += newPinches;
+          setMashCount(r.mashCount);  // Sincronizar estado React para disparar re-render
+        }
         if (r.mashCount >= 4) done = true;
       }
 
@@ -886,10 +899,14 @@ export default function GameCanvas({ onOpenClinical }: GameCanvasProps) {
           <WoodenSign
             icon={getGestureIcon(challengeUI.type)}
             title={challengeUI.instruction}
-            progress={challengeUI.progress / 100}
+            progress={
+              challengeUI.type === 'REPEATED_PINCH'
+                ? mashCount / 4
+                : challengeUI.progress / 100
+            }
             progressLabel={
               challengeUI.type === 'REPEATED_PINCH'
-                ? `${challengeUI.count} / 4`
+                ? `${mashCount} / 4`
                 : undefined
             }
             description={getDescription(challengeUI.type)}

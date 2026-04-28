@@ -24,8 +24,7 @@ interface Props {
 }
 
 const SAMPLE_RATE_MS = 50
-const MAX_DURATION_MS = 3000  // 3 segundos exactos
-const MIN_DURATION_MS = 2000  // 2 segundos mínimo para considerar éxito
+const MAX_DURATION_MS = 1000  // 1 segundo real
 
 export default function VocalChallengeCard({
   onComplete, visible
@@ -107,15 +106,24 @@ export default function VocalChallengeCard({
 
       // Loop de captura de amplitud
       let elapsed = 0
+      const WARMUP_MS = 200
+      let warmupElapsed = 0
 
       const tick = () => {
-        if (!recordingRef.current) return
-        const dataArray = new Uint8Array(analyser.frequencyBinCount)
-        analyser.getByteTimeDomainData(dataArray)
+        if (!recordingRef.current || !analyserRef.current) return
+        const dataArray = new Uint8Array(analyserRef.current.frequencyBinCount)
+        analyserRef.current.getByteTimeDomainData(dataArray)
         const rms = Math.sqrt(
           dataArray.reduce((acc, v) => acc + Math.pow((v - 128) / 128, 2), 0) / dataArray.length
         )
-        samplesRef.current.push(rms)
+
+        warmupElapsed += SAMPLE_RATE_MS
+
+        // Solo guardar muestras después del warmup:
+        if (warmupElapsed > WARMUP_MS) {
+          samplesRef.current.push(rms)
+        }
+
         elapsed += SAMPLE_RATE_MS
         setProgress(Math.min(100, (elapsed / MAX_DURATION_MS) * 100))
 
@@ -123,6 +131,8 @@ export default function VocalChallengeCard({
         drawWaveform(dataArray)
 
         if (elapsed >= MAX_DURATION_MS) {
+          // Log para verificar:
+          console.log('samples al finalizar:', samplesRef.current.length, samplesRef.current.slice(0, 5))
           finishRecording(Date.now() - buttonPressedAtRef.current)
           return
         }
@@ -172,6 +182,7 @@ export default function VocalChallengeCard({
     streamRef.current?.getTracks().forEach(t => t.stop())
 
     const latencyMs = latency ?? Date.now() - buttonPressedAtRef.current
+    console.log('samples:', samplesRef.current.length, samplesRef.current.slice(0,5))
     const metrics = computeVocalMetrics(
       samplesRef.current,
       SAMPLE_RATE_MS,
@@ -180,9 +191,10 @@ export default function VocalChallengeCard({
       transcript
     )
 
-    // Evaluar éxito por duración >= 2000ms
-    const success = metrics.vocal_duration_ms >= MIN_DURATION_MS
-    setIsSuccess(success)
+    // El reto se completa siempre que el timer llegue a MAX_DURATION_MS
+    // Las métricas de amplitud y estabilidad se capturan para el JSON
+    // pero NO bloquean la finalización del reto
+    setIsSuccess(true)
     setResult(metrics)
     setVocalState('RESULT')
     setTimeout(() => onComplete(metrics), 2000)
@@ -195,7 +207,8 @@ export default function VocalChallengeCard({
       position: 'fixed', top: 16, left: '50%',
       transform: 'translateX(-50%)',
       zIndex: 9999,
-      display: 'flex', gap: 16, alignItems: 'flex-start'
+      display: 'flex', gap: 16, alignItems: 'flex-start',
+      pointerEvents: 'none'
     }}>
       {/* CARTEL PRINCIPAL — mismo estilo madera */}
       <div style={{
@@ -205,6 +218,7 @@ export default function VocalChallengeCard({
         padding: '20px 18px',
         transformOrigin: '50% 0%',
         animation: 'wsSwing 4.5s ease-in-out infinite',
+        pointerEvents: 'auto'
       }}>
         {/* Header */}
         <div style={{
@@ -291,13 +305,12 @@ export default function VocalChallengeCard({
             color: WOOD.parchmentInk, lineHeight: 1.8
           }}>
             <div style={{
-              color: isSuccess ? '#2d7a2d' : '#7a2d2d',
+              color: '#2d7a2d',
               marginBottom: 4
             }}>
-              {isSuccess ? '✓ COMPLETADO' : '✗ MUY CORTO'}
+              ✓ COMPLETADO
             </div>
             <div>DURACIÓN: {result.vocal_duration_ms}ms</div>
-            <div>OBJETIVO: {MIN_DURATION_MS}ms</div>
             <div>ESTABILIDAD: {Math.round(result.amplitude_stability * 100)}%</div>
             <div>PAUSAS: {result.pause_count}</div>
           </div>
@@ -311,6 +324,7 @@ export default function VocalChallengeCard({
           background: `repeating-linear-gradient(90deg, ${WOOD.base} 0px, ${WOOD.base} 38px, ${WOOD.dark} 38px, ${WOOD.dark} 40px)`,
           boxShadow: `inset 0 0 0 6px ${WOOD.outline}, 6px 6px 0 rgba(0,0,0,0.5)`,
           padding: '12px',
+          pointerEvents: 'auto'
         }}>
           <div style={{
             fontFamily: '"Press Start 2P", monospace',
