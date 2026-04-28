@@ -14,7 +14,6 @@ export default function Home() {
   const [fadeOut, setFadeOut] = useState(false);
 
   const videoRef   = useRef<HTMLVideoElement>(null);
-  const gazeDotRef = useRef<HTMLDivElement>(null);
   const gazeSamplesRef = useRef<GazeSample[]>([]);
 
   // ── Intro → calibración ───────────────────────────────────────────
@@ -33,14 +32,9 @@ export default function Home() {
   }, [phase, startCalibration]);
 
   // ── Callbacks del eye tracker ─────────────────────────────────────
-  // onGaze: manipulación directa del DOM, sin re-render (60 fps)
+  // onGaze: solo recopilar métricas, sin actualizar el DOM (cursor visual eliminado)
   const handleGaze = useCallback((g: { x: number; y: number }) => {
-    if (gazeDotRef.current) {
-      gazeDotRef.current.style.left = g.x + "px";
-      gazeDotRef.current.style.top  = g.y + "px";
-    }
-
-    // Añadir al buffer:
+    // Añadir al buffer para métricas clínicas:
     gazeSamplesRef.current.push({ x: g.x, y: g.y, timestamp: Date.now() });
     // Mantener solo las últimas 300 muestras:
     if (gazeSamplesRef.current.length > 300) {
@@ -94,23 +88,6 @@ export default function Home() {
       {(phase === "calibrating" || phase === "playing") && (
         <CalibrationScreen onGaze={handleGaze} onCalibrated={handleCalibrated} />
       )}
-
-      {/* Punto de mirada — siempre en el DOM, visible solo al jugar */}
-      <div
-        ref={gazeDotRef}
-        style={{
-          display:       phase === "playing" ? "block" : "none",
-          position:      "fixed",
-          zIndex:        9999,
-          pointerEvents: "none",
-          width:         22,
-          height:        22,
-          borderRadius:  "50%",
-          background:    "radial-gradient(circle at 35% 35%, #ffffff, rgba(255,255,255,0.55))",
-          boxShadow:     "0 0 8px 3px rgba(255,255,255,0.65), 0 0 2px rgba(255,255,255,0.9)",
-          transform:     "translate(-50%, -50%)",
-        }}
-      />
 
       {/* ── Pantalla de intro ─────────────────────────────────────── */}
       {phase === "intro" && (

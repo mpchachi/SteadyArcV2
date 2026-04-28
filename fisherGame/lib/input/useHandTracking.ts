@@ -50,11 +50,15 @@ export function useHandTracking(
   handOpennessRef:   React.MutableRefObject<number>;
   consumePinchCount: () => number;
   isSmilingRef:      React.MutableRefObject<boolean>;
+  handPosRef:        React.MutableRefObject<{ x: number; y: number }>;
+  isFistRef:         React.MutableRefObject<boolean>;
 } {
   const handOpennessRef  = useRef<number>(0);
   const pinchCountRef    = useRef<number>(0);
   const wasPinchingRef   = useRef<boolean>(false);
   const isSmilingRef     = useRef<boolean>(false);
+  const handPosRef       = useRef<{ x: number; y: number }>({ x: 0.5, y: 0.5 });
+  const isFistRef        = useRef<boolean>(false);
 
   useEffect(() => {
     let isMounted = true;
@@ -80,6 +84,17 @@ export function useHandTracking(
           if (!isMounted) return;
           const lm = results.multiHandLandmarks?.[0];
           handOpennessRef.current = lm ? calcHandOpenness(lm) : 0;
+
+          // Actualizar posición de la mano usando el centro de la palma (lm[9]) - invertir X para efecto espejo
+          if (lm && lm[9]) {
+            handPosRef.current = {
+              x: 1 - lm[9].x,  // Invertir X para efecto espejo
+              y: lm[9].y
+            };
+          }
+
+          // Actualizar si el puño está cerrado (openness < 0.2)
+          isFistRef.current = handOpennessRef.current < 0.2;
 
           // Rising-edge pinch counter: fires once each time pinch starts
           const isPinching = lm ? detectPinch(lm) : false;
@@ -135,5 +150,5 @@ export function useHandTracking(
     return n;
   };
 
-  return { handOpennessRef, consumePinchCount, isSmilingRef };
+  return { handOpennessRef, consumePinchCount, isSmilingRef, handPosRef, isFistRef };
 }

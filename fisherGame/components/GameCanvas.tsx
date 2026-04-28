@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { KeyboardMouseInput } from "@/lib/input/KeyboardMouseInput";
+import { MediaPipeHandInput } from "@/lib/input/MediaPipeHandInput";
 import { FishManager, type Fish } from "@/lib/game/FishManager";
 import { useHandTracking } from "@/lib/input/useHandTracking";
 import WoodenSign, { GestureIcon } from "./WoodenSign";
@@ -92,8 +92,8 @@ interface GameCanvasProps {
 export default function GameCanvas({ onOpenClinical }: GameCanvasProps) {
   const canvasRef    = useRef<HTMLCanvasElement>(null);
   const videoRef     = useRef<HTMLVideoElement>(null);
-  const { handOpennessRef, consumePinchCount, isSmilingRef } = useHandTracking(videoRef);
-  const inputRef     = useRef<KeyboardMouseInput | null>(null);
+  const { handOpennessRef, consumePinchCount, isSmilingRef, handPosRef, isFistRef } = useHandTracking(videoRef);
+  const inputRef     = useRef<MediaPipeHandInput | null>(null);
   const rafRef       = useRef<number>(0);
   const mucRef       = useRef<HTMLImageElement | null>(null);
   const izqRef       = useRef<HTMLImageElement | null>(null);
@@ -332,7 +332,7 @@ export default function GameCanvas({ onOpenClinical }: GameCanvasProps) {
       canvas!.height = window.innerHeight;
       applyLayout();
       inputRef.current?.dispose();
-      inputRef.current = new KeyboardMouseInput(canvas!);
+      inputRef.current = new MediaPipeHandInput(handPosRef, isFistRef);
     }
 
     resize();
@@ -689,6 +689,33 @@ export default function GameCanvas({ onOpenClinical }: GameCanvasProps) {
 
     // drawChallengeUI removed - replaced by WoodenSign and VocalChallengeCard components
 
+    function drawCursor(pos: { x: number; y: number }): void {
+      const cx = pos.x * W;
+      const cy = pos.y * H;
+      const radius = 11;
+
+      // Círculo exterior con glow
+      ctx.shadowBlur = 12;
+      ctx.shadowColor = "rgba(255, 255, 255, 0.8)";
+      ctx.fillStyle = "rgba(255, 255, 255, 0.3)";
+      ctx.beginPath();
+      ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Círculo interior brillante
+      ctx.shadowBlur = 6;
+      ctx.shadowColor = "rgba(255, 255, 255, 1)";
+      const gradient = ctx.createRadialGradient(cx - 3, cy - 3, 0, cx, cy, radius * 0.7);
+      gradient.addColorStop(0, "rgba(255, 255, 255, 1)");
+      gradient.addColorStop(1, "rgba(255, 255, 255, 0.6)");
+      ctx.fillStyle = gradient;
+      ctx.beginPath();
+      ctx.arc(cx, cy, radius * 0.7, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.shadowBlur = 0;
+    }
+
     function drawScore(): void {
       ctx.font = '14px "Press Start 2P", monospace';
       ctx.textAlign = "left";
@@ -818,6 +845,7 @@ export default function GameCanvas({ onOpenClinical }: GameCanvasProps) {
       drawMuchacho(bob);
       drawFloatingTexts(now);
       drawScore();
+      drawCursor(pos);  // Dibujar cursor de la mano
       // drawChallengeUI(now); // Removed: replaced by ChallengeCard component
 
       updateChallengeUIState();
