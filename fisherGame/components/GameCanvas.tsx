@@ -7,6 +7,7 @@ import { useHandTracking } from "@/lib/input/useHandTracking";
 import WoodenSign, { GestureIcon } from "./WoodenSign";
 import VocalChallengeCard from "./VocalChallengeCard";
 import { VocalMetrics } from "@/lib/vocalAnalysis";
+import { computeSessionMetrics, type ChallengeRecord, type SessionMetrics } from "@/lib/sessionMetrics";
 
 // h/w ratios for each source PNG
 const MUC_HW = 376 / 856;
@@ -63,6 +64,7 @@ interface ReelingState {
   challengeDone: number;
   currentChallenge: ChallengeType;
   challengeStart: number;
+  challengeActualStart: number;
   holdAccum: number;
   mashCount: number;
   lerpFromX: number;   lerpFromY: number;
@@ -87,9 +89,12 @@ function arcMid(o: Pt, t: Pt): Pt {
 
 interface GameCanvasProps {
   onOpenClinical: () => void;
+  onGameOver: (score: number, metrics: SessionMetrics) => void;
 }
 
-export default function GameCanvas({ onOpenClinical }: GameCanvasProps) {
+export default function GameCanvas({ onOpenClinical, onGameOver }: GameCanvasProps) {
+  const challengeRecordsRef = useRef<ChallengeRecord[]>([]);
+  const lastVocalMetricsRef = useRef<VocalMetrics | null>(null);
   const canvasRef    = useRef<HTMLCanvasElement>(null);
   const videoRef     = useRef<HTMLVideoElement>(null);
   const { handOpennessRef, consumePinchCount, isSmilingRef, handPosRef, isFistRef } = useHandTracking(videoRef);
@@ -110,7 +115,7 @@ export default function GameCanvas({ onOpenClinical }: GameCanvasProps) {
     active: false, fishId: -1,
     fishStartX: 0, fishStartY: 0,
     challengeDone: 0, currentChallenge: "SMILE_CHALLENGE",
-    challengeStart: 0,
+    challengeStart: 0, challengeActualStart: 0,
     holdAccum: 0, mashCount: 0,
     lerpFromX: 0, lerpFromY: 0,
     lerpTargetX: 0, lerpTargetY: 0,
@@ -146,8 +151,7 @@ export default function GameCanvas({ onOpenClinical }: GameCanvasProps) {
   const handleVocalComplete = (metrics: VocalMetrics) => {
     setShowVocalChallenge(false);
     vocalMetricsRef.current = metrics;
-    // Las métricas se guardarán cuando finalicemos el reto
-    // La lógica de avance del pez se manejará en tickReeling
+    lastVocalMetricsRef.current = metrics;
   };
 
   useEffect(() => {
@@ -516,10 +520,11 @@ export default function GameCanvas({ onOpenClinical }: GameCanvasProps) {
     }
 
     function startChallenge(r: ReelingState, now: number): void {
-      r.currentChallenge = pickChallenge();
-      r.challengeStart   = now;
-      r.holdAccum        = 0;
-      r.mashCount        = 0;
+      r.currentChallenge    = pickChallenge();
+      r.challengeStart      = now;
+      r.challengeActualStart = now;
+      r.holdAccum           = 0;
+      r.mashCount           = 0;
       setMashCount(0);  // Reset del estado React espejo
 
       // Si es VOCAL, activar el componente VocalChallengeCard y desactivar retos clínicos
@@ -678,6 +683,13 @@ export default function GameCanvas({ onOpenClinical }: GameCanvasProps) {
 
       if (!done) return;
 
+      // Record completed challenge
+      challengeRecordsRef.current.push({
+        type: r.currentChallenge,
+        completionMs: now - r.challengeActualStart,
+        succeeded: true,
+      });
+
       r.challengeDone++;
       r.lerpFromX    = fish.x;
       r.lerpFromY    = fish.y;
@@ -694,6 +706,19 @@ export default function GameCanvas({ onOpenClinical }: GameCanvasProps) {
         r.active = false;
         castRef.current.phase      = "in";
         castRef.current.phaseStart = now;
+        if (scoreRef.current >= 100) {
+          cancelAnimationFrame(rafRef.current);
+          const vm = lastVocalMetricsRef.current;
+          const metrics = computeSessionMetrics(
+            challengeRecordsRef.current,
+            vm?.amplitude_stability ?? 0,
+            vm?.vocal_duration_ms ?? 0,
+            vm?.pause_count ?? 0,
+            vm?.mean_amplitude ?? 0,
+          );
+          onGameOver(scoreRef.current, metrics);
+          return;
+        }
         return;
       }
 

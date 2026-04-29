@@ -4,14 +4,18 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import GameCanvas          from "@/components/GameCanvas";
 import CalibrationScreen   from "@/components/CalibrationScreen";
 import ClinicalView        from "@/components/ClinicalView";
+import GameOverDashboard   from "@/components/GameOverDashboard";
 import { GameEngineProvider } from "@/context/GameEngineProvider";
 import type { GazeSample } from "@/lib/gazeMetrics";
+import type { SessionMetrics } from "@/lib/sessionMetrics";
 
-type Phase = "intro" | "calibrating" | "playing" | "clinical";
+type Phase = "intro" | "calibrating" | "playing" | "clinical" | "dashboard";
 
 export default function Home() {
-  const [phase,   setPhase]   = useState<Phase>("intro");
-  const [fadeOut, setFadeOut] = useState(false);
+  const [phase,          setPhase]          = useState<Phase>("intro");
+  const [fadeOut,        setFadeOut]        = useState(false);
+  const [finalScore,     setFinalScore]     = useState(0);
+  const [sessionMetrics, setSessionMetrics] = useState<SessionMetrics | null>(null);
 
   const videoRef   = useRef<HTMLVideoElement>(null);
   const gazeSamplesRef = useRef<GazeSample[]>([]);
@@ -44,13 +48,30 @@ export default function Home() {
 
   const handleCalibrated = useCallback(() => setPhase("playing"), []);
 
+  const handleGameOver = useCallback((score: number, metrics: SessionMetrics) => {
+    setFinalScore(score);
+    setSessionMetrics(metrics);
+    setPhase("dashboard");
+  }, []);
+
+  const handleReplay = useCallback(() => {
+    setFinalScore(0);
+    setSessionMetrics(null);
+    setPhase("intro");
+  }, []);
+
   // ─────────────────────────────────────────────────────────────────
   return (
     <GameEngineProvider gazeSamples={gazeSamplesRef}>
       <main className="relative w-screen h-screen bg-black overflow-hidden">
 
       {/* Juego — se monta solo al terminar la calibración */}
-      {phase === "playing" && <GameCanvas onOpenClinical={() => setPhase("clinical")} />}
+      {phase === "playing" && (
+        <GameCanvas
+          onOpenClinical={() => setPhase("clinical")}
+          onGameOver={handleGameOver}
+        />
+      )}
 
       {/* Mensaje de carga mientras se inicializa el eye tracker */}
       {phase === "calibrating" && (
@@ -87,6 +108,11 @@ export default function Home() {
           Se detiene en modo clinical para no competir con la cámara de MediaPipe. */}
       {(phase === "calibrating" || phase === "playing") && (
         <CalibrationScreen onGaze={handleGaze} onCalibrated={handleCalibrated} />
+      )}
+
+      {/* Dashboard final — se muestra al terminar la partida */}
+      {phase === "dashboard" && sessionMetrics && (
+        <GameOverDashboard score={finalScore} metrics={sessionMetrics} onReplay={handleReplay} />
       )}
 
       {/* ── Pantalla de intro ─────────────────────────────────────── */}
